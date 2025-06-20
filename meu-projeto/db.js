@@ -3,7 +3,7 @@ require("dotenv").config();
 
 let pool;
 
-if (process.env.DATABASE_URL) {
+if (process.env.DATABASE_PUBLIC_URL) {
   // Em produção Railway: usa a URL completa e habilita SSL
   pool = new Pool({
     connectionString: process.env.DATABASE_PUBLIC_URL,
