@@ -2,37 +2,39 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 
-// Middlewares primeiro
+// Criando o app Express
 const app = express();
 
+// Middleware de logging para debugar as requisições
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
+// Configuração do CORS
 app.use(
   cors({
     origin: ["http://localhost:8081", "exp://your-ip:8081"],
     credentials: true,
   })
 );
+
+// Middleware para interpretar JSON no body
 app.use(express.json({ limit: "10mb" }));
 
+// Servir arquivos estáticos da pasta uploads
 const uploadDir = path.join(__dirname, "uploads");
 app.use("/uploads", express.static(uploadDir));
-// Importação de rotas (verificação opcional)
+
+// Importação das rotas
 const authRoutes = require("./routes/authRoutes");
 const imagemRoutes = require("./routes/imagemRoutes");
 
-console.assert(
-  typeof authRoutes === "function",
-  "authRoutes deve ser uma função"
-);
-console.assert(
-  typeof imagemRoutes === "function",
-  "imagemRoutes deve ser uma função"
-);
-
-// Rotas
+// Uso das rotas
 app.use("/auth", authRoutes);
 app.use("/images", imagemRoutes);
 
-// Health check
+// Endpoint simples para health check
 app.get("/health", (req, res) => {
   res.json({
     status: "OK",
@@ -40,7 +42,12 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Tratamento de erros centralizado
+// Middleware para rotas não encontradas (404) — deve vir antes do middleware de erro
+app.use((req, res, next) => {
+  res.status(404).json({ error: "Endpoint não encontrado" });
+});
+
+// Middleware de tratamento de erros centralizado
 app.use((err, req, res, next) => {
   console.error("⚠️ Erro:", err.stack);
   res.status(500).json({
@@ -49,22 +56,16 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Deve ficar depois das rotas definidas e antes do middleware de erro geral
-app.use((req, res, next) => {
-  res.status(404).json({ error: "Endpoint não encontrado" });
-});
-
-// Inicialização
+// Inicialização do servidor
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando em http://localhost:${PORT}
-   Rodando em railway`);
+  console.log(`🚀 Servidor rodando em http://localhost:${PORT} - Rodando em Railway`);
 });
 
-// Exportação para testes e outros usos
+// Exportação para testes ou controle externo (opcional)
 module.exports = {
   app,
-  server, // Para controle de shutdown
+  server,
   start: async () => {
     return new Promise((resolve) => {
       server.on("listening", () => resolve(app));
