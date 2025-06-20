@@ -51,7 +51,8 @@ app.use((err, req, res, next) => {
 // Inicialização
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
+  console.log(`🚀 Servidor rodando em http://localhost:${PORT}
+   Rodando em railway`);
 });
 
 // Exportação para testes e outros usos
