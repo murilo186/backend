@@ -11,10 +11,19 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "bora bils",
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/murilo186/backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/murilo186/backend/issues"
+  },
+  "homepage": "https://github.com/murilo186/backend#readme"
 }
