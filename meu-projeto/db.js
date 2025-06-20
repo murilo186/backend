@@ -6,7 +6,7 @@ let pool;
 if (process.env.DATABASE_URL) {
   // Em produção Railway: usa a URL completa e habilita SSL
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: process.env.DATABASE_PUBLIC_URL,
     ssl: { rejectUnauthorized: false },
     max: 20,
     idleTimeoutMillis: 30000,
@@ -28,7 +28,9 @@ if (process.env.DATABASE_URL) {
 
 pool
   .query("SELECT NOW()")
-  .then(() => console.log("✅ Conexão com o PostgreSQL estabelecida com sucesso"))
+  .then(() =>
+    console.log("✅ Conexão com o PostgreSQL estabelecida com sucesso")
+  )
   .catch((err) => {
     console.error("❌ Erro ao conectar ao PostgreSQL:", err.message);
     process.exit(1);
