@@ -4,6 +4,7 @@ const path = require("path");
 
 // Middlewares primeiro
 const app = express();
+
 app.use(
   cors({
     origin: ["http://localhost:8081", "exp://your-ip:8081"],
@@ -46,6 +47,11 @@ app.use((err, req, res, next) => {
     error: "Erro interno",
     ...(process.env.NODE_ENV === "development" && { details: err.message }),
   });
+});
+
+// Deve ficar depois das rotas definidas e antes do middleware de erro geral
+app.use((req, res, next) => {
+  res.status(404).json({ error: "Endpoint não encontrado" });
 });
 
 // Inicialização
