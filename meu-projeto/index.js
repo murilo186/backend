@@ -10,14 +10,14 @@ app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
-
-// Configuração do CORS
-app.use(
-  cors({
-    origin: ["http://localhost:8081", "exp://your-ip:8081"],
-    credentials: true,
-  })
-);
+           
+// Configuração do CORS (CORRIGIDO)                           
+app.use(cors({
+  origin: "*",
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Middleware para interpretar JSON no body
 app.use(express.json({ limit: "10mb" }));
@@ -29,20 +29,43 @@ app.use("/uploads", express.static(uploadDir));
 // Importação das rotas
 const authRoutes = require("./routes/authRoutes");
 const imagemRoutes = require("./routes/imagemRoutes");
+const fretesRoutes = require("./routes/fretesRoutes"); // Nova rota
 
 // Uso das rotas
-app.use("/auth", authRoutes);
+app.use("/api/auth", authRoutes);
 app.use("/images", imagemRoutes);
+app.use("/fretes", fretesRoutes); // Nova rota
 
 // Endpoint simples para health check
 app.get("/health", (req, res) => {
   res.json({
     status: "OK",
     timestamp: new Date().toISOString(),
+    message: "Backend TCC NALM GO funcionando"
   });
 });
 
-// Middleware para rotas não encontradas (404) — deve vir antes do middleware de erro
+// Endpoint para testar conexão com banco
+app.get("/test-db", async (req, res) => {
+  try {
+    const pool = require("./db");
+    const result = await pool.query("SELECT NOW() as timestamp, COUNT(*) as total_empresas FROM empresas");
+    res.json({
+      success: true,
+      database_connected: true,
+      timestamp: result.rows[0].timestamp,
+      total_empresas: result.rows[0].total_empresas
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      database_connected: false,
+      error: err.message
+    });
+  }
+});
+
+// Middleware para rotas não encontradas (404) – deve vir antes do middleware de erro
 app.use((req, res, next) => {
   res.status(404).json({ error: "Endpoint não encontrado" });
 });
@@ -58,8 +81,10 @@ app.use((err, req, res, next) => {
 
 // Inicialização do servidor
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando em http://localhost:${PORT} - Rodando em Railway`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor TCC NALM GO rodando em http://localhost:${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔧 Test DB: http://localhost:${PORT}/test-db`);
 });
 
 // Exportação para testes ou controle externo (opcional)

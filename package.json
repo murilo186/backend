@@ -1,10 +1,11 @@
 {
+  
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
-    "multer": "^2.0.0",
+    "multer": "^2.0.2",
     "pg": "^8.15.5"
   },
   "name": "node2",
@@ -17,7 +18,6 @@
   "author": "",
   "license": "ISC",
   "description": "bora bils",
-  "devDependencies": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/murilo186/backend.git"
