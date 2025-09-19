@@ -1,0 +1,308 @@
+const FreteModel = require("../models/FreteModel");
+const OfertaFreteModel = require("../models/OfertaFreteModel");
+const MotoristaModel = require("../models/MotoristaModel");
+const { createError } = require("../utils/errors");
+const { validateRequiredFields, validateNumeric, validateEnum } = require("../utils/validators");
+const Logger = require("../utils/logger");
+const db = require("../config/database");
+
+class FreteService {
+  static async createFrete(data) {
+    const {
+      empresaId,
+      origem,
+      destino,
+      distancia,
+      valor,
+      tipoCarga,
+      peso,
+      eixosRequeridos,
+      observacoes
+    } = data;
+
+    // Validação de campos obrigatórios
+    const validation = validateRequiredFields(
+      ["empresaId", "origem", "destino", "valor", "tipoCarga"],
+      data
+    );
+    if (!validation.isValid) {
+      throw createError.validation(validation.message);
+    }
+
+    // Validação de valor
+    const valorValidation = validateNumeric(valor, 0.01);
+    if (!valorValidation.isValid) {
+      throw createError.validation(`Valor inválido: ${valorValidation.message}`, "valor");
+    }
+
+    // Validação de peso (se fornecido)
+    if (peso) {
+      const pesoValidation = validateNumeric(peso, 0);
+      if (!pesoValidation.isValid) {
+        throw createError.validation(`Peso inválido: ${pesoValidation.message}`, "peso");
+      }
+    }
+
+    // Validação de eixos requeridos
+    if (eixosRequeridos) {
+      const eixosValidation = validateEnum(eixosRequeridos, [2, 3, 4, 5, 6], "Eixos requeridos");
+      if (!eixosValidation.isValid) {
+        throw createError.validation(eixosValidation.message, "eixosRequeridos");
+      }
+    }
+
+    const freteData = {
+      empresaId,
+      origem: origem.trim(),
+      destino: destino.trim(),
+      distancia,
+      valor: valorValidation.value,
+      tipoCarga: tipoCarga.trim(),
+      peso,
+      eixosRequeridos: eixosRequeridos || 3,
+      observacoes: observacoes?.trim() || null
+    };
+
+    const frete = await FreteModel.create(freteData);
+
+    Logger.info("Frete criado", {
+      freteId: frete.id,
+      empresaId,
+      origem: frete.origem,
+      destino: frete.destino
+    });
+
+    return frete;
+  }
+
+  static async getFretesByEmpresa(empresaId, status = null) {
+    const fretes = await FreteModel.findByEmpresa(empresaId, status);
+
+    // Agrupar por status para facilitar o frontend
+    const agrupados = {
+      pendentes: fretes.filter(f => f.status_frete === "pendente"),
+      andamento: fretes.filter(f =>
+        ["oferecido", "aceito", "em_andamento"].includes(f.status_frete)
+      ),
+      finalizados: fretes.filter(f => f.status_frete === "finalizado")
+    };
+
+    return {
+      fretes: status ? fretes : agrupados,
+      total: fretes.length
+    };
+  }
+
+  static async getFreteById(freteId) {
+    const frete = await FreteModel.findById(freteId);
+
+    if (!frete) {
+      throw createError.notFound("Frete");
+    }
+
+    return frete;
+  }
+
+  static async updateFrete(freteId, empresaId, updateData) {
+    // Validar dados de entrada similares ao create
+    const { origem, destino, valor } = updateData;
+
+    if (origem) updateData.origem = origem.trim();
+    if (destino) updateData.destino = destino.trim();
+
+    if (valor) {
+      const valorValidation = validateNumeric(valor, 0.01);
+      if (!valorValidation.isValid) {
+        throw createError.validation(`Valor inválido: ${valorValidation.message}`);
+      }
+      updateData.valor = valorValidation.value;
+    }
+
+    const frete = await FreteModel.update(freteId, empresaId, updateData);
+
+    Logger.info("Frete atualizado", { freteId, empresaId });
+
+    return frete;
+  }
+
+  static async deleteFrete(freteId, empresaId) {
+    const frete = await FreteModel.delete(freteId, empresaId);
+
+    Logger.info("Frete removido", { freteId, empresaId });
+
+    return frete;
+  }
+
+  static async offerFreteToMotorista(freteId, motoristaId, empresaId) {
+    // Verificar se frete existe e está pendente
+    const frete = await FreteModel.findById(freteId);
+
+    if (!frete) {
+      throw createError.notFound("Frete");
+    }
+
+    if (frete.empresa_id !== parseInt(empresaId)) {
+      throw createError.forbidden("Frete não pertence à sua empresa");
+    }
+
+    if (frete.status_frete !== "pendente") {
+      throw createError.validation("Frete não está pendente");
+    }
+
+    // Verificar se motorista existe e está disponível
+    const motorista = await MotoristaModel.findById(motoristaId);
+
+    if (!motorista) {
+      throw createError.notFound("Motorista");
+    }
+
+    if (motorista.empresa_id !== parseInt(empresaId)) {
+      throw createError.forbidden("Motorista não pertence à sua empresa");
+    }
+
+    if (motorista.status_disponibilidade !== "livre" || !motorista.ativo) {
+      throw createError.validation("Motorista não está disponível");
+    }
+
+    // Verificar se já existe oferta ativa
+    const existingOffer = await OfertaFreteModel.checkExistingActive(freteId, motoristaId);
+    if (existingOffer) {
+      throw createError.conflict("Já existe uma oferta ativa para este motorista");
+    }
+
+    // Usar transação para criar oferta + atualizar status do frete
+    return await db.transaction(async (client) => {
+      // Criar oferta
+      await OfertaFreteModel.create(freteId, motoristaId, empresaId);
+
+      // Atualizar status do frete
+      await FreteModel.updateStatus(freteId, "oferecido", { dataOferta: new Date() });
+
+      Logger.info("Frete oferecido", { freteId, motoristaId, empresaId });
+
+      return { success: true, message: `Frete oferecido para ${motorista.nome}` };
+    });
+  }
+
+  static async getOfertasForMotorista(motoristaId) {
+    const ofertas = await OfertaFreteModel.findOfertasForMotorista(motoristaId);
+    return ofertas;
+  }
+
+  static async acceptFrete(freteId, motoristaId) {
+    // Verificar se existe oferta ativa
+    const oferta = await OfertaFreteModel.findByFrete(freteId, motoristaId);
+
+    if (!oferta) {
+      throw createError.notFound("Oferta não encontrada ou expirada");
+    }
+
+    // Usar transação para aceitar
+    return await db.transaction(async (client) => {
+      // Atualizar oferta
+      await OfertaFreteModel.updateStatus(freteId, motoristaId, "aceito");
+
+      // Atualizar frete
+      await FreteModel.updateStatus(freteId, "aceito", { motoristaId });
+
+      // Atualizar status do motorista
+      await MotoristaModel.updateStatus(motoristaId, "em-frete");
+
+      Logger.info("Frete aceito", { freteId, motoristaId });
+
+      return { success: true, message: "Frete aceito com sucesso" };
+    });
+  }
+
+  static async rejectFrete(freteId, motoristaId, observacoes = null) {
+    // Verificar se existe oferta ativa
+    const oferta = await OfertaFreteModel.findByFrete(freteId, motoristaId);
+
+    if (!oferta) {
+      throw createError.notFound("Oferta não encontrada");
+    }
+
+    // Usar transação para recusar
+    return await db.transaction(async (client) => {
+      // Atualizar oferta
+      await OfertaFreteModel.updateStatus(freteId, motoristaId, "recusado", observacoes);
+
+      // Voltar frete para pendente
+      await FreteModel.updateStatus(freteId, "pendente");
+
+      Logger.info("Frete recusado", { freteId, motoristaId, observacoes });
+
+      return { success: true, message: "Frete recusado" };
+    });
+  }
+
+  static async finalizarFrete(freteId, empresaId, finalizadoPor = "Admin") {
+    // Verificar se frete pode ser finalizado
+    const frete = await FreteModel.findById(freteId);
+
+    if (!frete) {
+      throw createError.notFound("Frete");
+    }
+
+    if (frete.empresa_id !== parseInt(empresaId)) {
+      throw createError.forbidden("Frete não pertence à sua empresa");
+    }
+
+    if (!["aceito", "em_andamento"].includes(frete.status_frete)) {
+      throw createError.validation("Frete não pode ser finalizado");
+    }
+
+    // Usar transação para finalizar
+    return await db.transaction(async (client) => {
+      // Finalizar frete
+      await FreteModel.updateStatus(freteId, "finalizado", { finalizadoPor });
+
+      // Liberar motorista se houver
+      if (frete.motorista_id) {
+        await MotoristaModel.updateStatus(frete.motorista_id, "livre");
+        await MotoristaModel.incrementFretesConcluidos(frete.motorista_id);
+      }
+
+      Logger.info("Frete finalizado", { freteId, empresaId, finalizadoPor });
+
+      return { success: true, message: "Frete finalizado com sucesso" };
+    });
+  }
+
+  static async getFretesByMotorista(motoristaId, status = null) {
+    const statusArray = status === "ativos" ? ["aceito", "em_andamento"] :
+                      status === "historico" ? ["finalizado"] : status;
+
+    const fretes = await FreteModel.findByMotorista(motoristaId, statusArray);
+    return fretes;
+  }
+
+  static async getStats(empresaId = null, motoristaId = null) {
+    return await FreteModel.getStats(empresaId, motoristaId);
+  }
+
+  // MÉTODOS ESPECÍFICOS MOBILE APP
+  static async getFretesAtivosMotorista(motoristaId) {
+    try {
+      const fretes = await FreteModel.getFretesAtivosMotorista(motoristaId);
+      Logger.info(`Encontrados ${fretes.length} fretes ativos para motorista ${motoristaId}`);
+      return fretes;
+    } catch (error) {
+      Logger.error("Erro ao buscar fretes ativos", { motoristaId, error: error.message });
+      throw error;
+    }
+  }
+
+  static async getHistoricoMotorista(motoristaId) {
+    try {
+      const fretes = await FreteModel.getHistoricoMotorista(motoristaId);
+      Logger.info(`Encontrados ${fretes.length} fretes no histórico para motorista ${motoristaId}`);
+      return fretes;
+    } catch (error) {
+      Logger.error("Erro ao buscar histórico de fretes", { motoristaId, error: error.message });
+      throw error;
+    }
+  }
+}
+
+module.exports = FreteService;

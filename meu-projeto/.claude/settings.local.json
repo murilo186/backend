@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/nalmgoo/backend/**)",
+      "Bash(node:*)",
+      "Bash(curl:*)",
+      "Read(//c/nalmgoo/web3/**)",
+      "Read(//c/nalmgoo/MotoristaApp/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,5 +1,25 @@
 {
-  
+  "name": "nalm-go-backend",
+  "version": "2.0.0",
+  "description": "Backend profissional para sistema NALM GO de gestão de fretes e motoristas",
+  "main": "meu-projeto/server.js",
+  "scripts": {
+    "start": "node meu-projeto/server.js",
+    "dev": "NODE_ENV=development node meu-projeto/server.js",
+    "prod": "NODE_ENV=production node meu-projeto/server.js",
+    "test": "echo \"Testes não implementados ainda\" && exit 0"
+  },
+  "keywords": [
+    "nodejs",
+    "express",
+    "postgresql",
+    "freight",
+    "logistics",
+    "api",
+    "backend"
+  ],
+  "author": "NALM GO Team",
+  "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
@@ -8,16 +28,10 @@
     "multer": "^2.0.2",
     "pg": "^8.15.5"
   },
-  "name": "node2",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "start": "node ./meu-projeto/index.js"
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "bora bils",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/murilo186/backend.git"

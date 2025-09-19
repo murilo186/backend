@@ -607,7 +607,7 @@ router.get("/motorista/:motoristaId/historico", async (req, res) => {
 
     res.json({
       success: true,
-      fretes: resultado.rows,
+2      fretes: resultado.rows,
     });
   } catch (err) {
     console.error("Erro ao buscar histórico de fretes:", err);
