@@ -33,11 +33,9 @@ services:
       - key: LOG_LEVEL
         value: info
 
-  # Banco de dados PostgreSQL
-  - type: pgsql
-    name: nalm-go-db
+databases:
+  - name: nalm-go-db
+    databaseName: nalm_go_db
+    user: nalm_go_user
     plan: free
     region: oregon
-    databaseName: nalm_go_db
-    databaseUser: nalm_go_user
-    ipAllowList: []
