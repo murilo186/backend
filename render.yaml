@@ -21,7 +21,7 @@ services:
           name: nalm-go-db
           property: connectionString
       - key: GOOGLE_MAPS_API_KEY
-        value: AIzaSyDdcof_-ueqF-JxkAF9zplTr7l85U8-hSs
+        sync: false
       - key: CORS_ORIGIN
         value: https://your-frontend-url.onrender.com
       - key: CORS_CREDENTIALS
