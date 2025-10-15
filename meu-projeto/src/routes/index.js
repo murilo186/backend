@@ -5,6 +5,8 @@ const convitesRoutes = require("./convites");
 const colaboradoresRoutes = require("./colaboradores");
 const motoristasRoutes = require("./motoristas");
 const empresasRoutes = require("./empresas");
+const proximityRoutes = require("./proximityRoutes");
+const candidaturasRoutes = require("./candidaturas");
 
 const router = express.Router();
 
@@ -45,5 +47,8 @@ router.use("/convites", convitesRoutes);
 router.use("/colaboradores", colaboradoresRoutes);
 router.use("/motoristas", motoristasRoutes);
 router.use("/empresas", empresasRoutes);
+router.use("/empresa", empresasRoutes); // Alias para compatibilidade com frontend
+router.use("/proximidade", proximityRoutes);
+router.use("/candidaturas", candidaturasRoutes);
 
 module.exports = router;

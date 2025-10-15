@@ -6,6 +6,104 @@ const router = express.Router();
 // ROTAS DE FRETES
 // ===============================
 
+// Criar candidatura para frete terceirizado (Mobile App)
+router.post("/:freteId/candidatar", async (req, res) => {
+  try {
+    const { freteId } = req.params;
+    const { motoristaId, observacoes } = req.body;
+
+    console.log("🔥 DEBUG candidatar - dados recebidos:", {
+      freteId,
+      motoristaId,
+      observacoes
+    });
+
+    // Verificar se o frete existe e está disponível para terceiros
+    const freteResult = await pool.query(
+      "SELECT * FROM fretes WHERE id = $1 AND disponivel_terceiros = true AND status_frete = 'pendente'",
+      [freteId]
+    );
+
+    if (freteResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Frete não encontrado ou não disponível para terceiros"
+      });
+    }
+
+    const frete = freteResult.rows[0];
+
+    // Verificar se já existe candidatura
+    const existingResult = await pool.query(
+      "SELECT id FROM candidaturas_fretes WHERE frete_id = $1 AND motorista_id = $2",
+      [freteId, motoristaId]
+    );
+
+    if (existingResult.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Você já se candidatou para este frete"
+      });
+    }
+
+    // Criar candidatura
+    const candidaturaResult = await pool.query(
+      `INSERT INTO candidaturas_fretes
+       (frete_id, motorista_id, empresa_id, observacoes_motorista)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [freteId, motoristaId, frete.empresa_id, observacoes || null]
+    );
+
+    console.log("✅ Candidatura criada com sucesso:", candidaturaResult.rows[0]);
+
+    res.status(201).json({
+      success: true,
+      message: "Candidatura enviada com sucesso!",
+      candidatura: candidaturaResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error("❌ Erro ao criar candidatura:", error);
+    res.status(500).json({
+      success: false,
+      error: "Erro interno no servidor"
+    });
+  }
+});
+
+// Buscar fretes disponíveis para terceiros (Mobile App)
+router.get("/terceirizados", async (req, res) => {
+  try {
+    console.log("🔥 DEBUG /terceirizados - endpoint chamado");
+
+    const resultado = await pool.query(
+      `SELECT f.*, e.nome_empresa, e.telefone as empresa_telefone,
+              e.email_corporativo as empresa_email
+       FROM fretes f
+       JOIN empresas e ON f.empresa_id = e.id
+       WHERE f.disponivel_terceiros = true
+         AND f.status_frete = 'pendente'
+         AND f.motorista_id IS NULL
+       ORDER BY f.created_at DESC`,
+      []
+    );
+
+    console.log("✅ DEBUG /terceirizados - resultado encontrado:", resultado.rows.length, "fretes");
+
+    res.json({
+      success: true,
+      fretes: resultado.rows,
+    });
+  } catch (err) {
+    console.error("❌ Erro ao buscar fretes terceirizados:", err);
+    res.status(500).json({
+      success: false,
+      error: "Erro interno no servidor",
+    });
+  }
+});
+
 // Criar frete (empresa)
 router.post("/", async (req, res) => {
   try {
@@ -607,7 +705,7 @@ router.get("/motorista/:motoristaId/historico", async (req, res) => {
 
     res.json({
       success: true,
-2      fretes: resultado.rows,
+      fretes: resultado.rows,
     });
   } catch (err) {
     console.error("Erro ao buscar histórico de fretes:", err);

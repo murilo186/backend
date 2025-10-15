@@ -43,13 +43,9 @@ class MotoristaModel {
   static async findByEmail(email) {
     try {
       const result = await db.query(
-        `SELECT m.id, m.nome, m.usuario, m.cpf, m.email, m.senha_hash, m.codigo, m.empresa_id,
-                m.status_disponibilidade, m.ativo, m.total_fretes_concluidos, m.created_at,
-                m.telefone, m.antt, m.placa_veiculo, m.renavam, m.chassi, m.cnh,
-                e.nome_empresa, e.email_corporativo as empresa_email
-         FROM motoristas m
-         LEFT JOIN empresas e ON m.empresa_id = e.id
-         WHERE m.email = $1`,
+        `SELECT id, nome, usuario, cpf, email, senha_hash, codigo, empresa_id,
+                status_disponibilidade, ativo, total_fretes_concluidos, created_at
+         FROM motoristas WHERE email = $1`,
         [email]
       );
 
@@ -62,13 +58,9 @@ class MotoristaModel {
   static async findById(id) {
     try {
       const result = await db.query(
-        `SELECT m.id, m.nome, m.usuario, m.cpf, m.email, m.codigo, m.empresa_id,
-                m.status_disponibilidade, m.ativo, m.total_fretes_concluidos, m.created_at,
-                m.telefone, m.antt, m.placa_veiculo, m.renavam, m.chassi, m.cnh,
-                e.nome_empresa, e.email_corporativo as empresa_email
-         FROM motoristas m
-         LEFT JOIN empresas e ON m.empresa_id = e.id
-         WHERE m.id = $1`,
+        `SELECT id, nome, usuario, cpf, email, codigo, empresa_id,
+                status_disponibilidade, ativo, total_fretes_concluidos, created_at
+         FROM motoristas WHERE id = $1`,
         [id]
       );
 
@@ -162,14 +154,11 @@ class MotoristaModel {
   static async findByEmpresa(empresaId) {
     try {
       const result = await db.query(
-        `SELECT m.id, m.nome, m.usuario, m.email, m.codigo, m.status_disponibilidade, m.ativo,
-                m.created_at, m.cpf, m.cnh, m.telefone, m.antt, m.placa_veiculo, m.renavam, m.chassi,
-                COALESCE(COUNT(f.id) FILTER (WHERE f.status_frete = 'finalizado'), 0)::integer as total_fretes_concluidos
-         FROM motoristas m
-         LEFT JOIN fretes f ON m.id = f.motorista_id AND f.empresa_id = $1
-         WHERE m.empresa_id = $1 AND m.ativo = true
-         GROUP BY m.id, m.nome, m.usuario, m.email, m.codigo, m.status_disponibilidade, m.ativo, m.created_at
-         ORDER BY m.nome`,
+        `SELECT id, nome, usuario, email, codigo, status_disponibilidade, ativo,
+                total_fretes_concluidos, created_at
+         FROM motoristas
+         WHERE empresa_id = $1 AND ativo = true
+         ORDER BY nome`,
         [empresaId]
       );
 
@@ -250,113 +239,23 @@ class MotoristaModel {
   static async findEquipeCompleta(empresaId) {
     try {
       const result = await db.query(
-        `SELECT DISTINCT ON (m.id) m.*,
-                f.id as frete_ativo_id,
-                f.origem,
-                f.destino,
+        `SELECT m.*, f.id as frete_ativo_id, f.origem, f.destino,
                 CASE
                   WHEN m.empresa_id = $1 THEN 'agregado'
-                  WHEN m.empresa_id_temporario = $1 THEN 'terceirizado'
+                  WHEN f.id IS NOT NULL THEN 'terceirizado_ativo'
                   ELSE 'livre'
-                END as tipo_vinculo,
-                (SELECT COUNT(*) FROM fretes WHERE motorista_id = m.id AND empresa_id = $1 AND status_frete = 'finalizado')::integer as total_fretes_concluidos
+                END as tipo_vinculo
          FROM motoristas m
-         LEFT JOIN fretes f ON m.id = f.motorista_id
-                              AND f.empresa_id = $1
-                              AND f.status_frete IN ('aceito', 'em_andamento')
-         WHERE m.ativo = true
-           AND (m.empresa_id = $1 OR m.empresa_id_temporario = $1)
-         ORDER BY m.id, tipo_vinculo, m.nome`,
+         LEFT JOIN fretes f ON m.id = f.motorista_id AND f.status_frete IN ('aceito', 'em_andamento')
+         WHERE (m.empresa_id = $1 OR (f.empresa_id = $1 AND f.id IS NOT NULL))
+           AND m.ativo = true
+         ORDER BY tipo_vinculo, m.nome`,
         [empresaId]
       );
 
       return result.rows;
     } catch (error) {
       throw createError.database(`Erro ao buscar equipe completa: ${error.message}`);
-    }
-  }
-
-  static async setEmpresaTemporaria(motoristaId, empresaId) {
-    try {
-      const result = await db.query(
-        "UPDATE motoristas SET empresa_id_temporario = $1 WHERE id = $2 RETURNING *",
-        [empresaId, motoristaId]
-      );
-
-      if (result.rows.length === 0) {
-        throw createError.notFound("Motorista");
-      }
-
-      return result.rows[0];
-    } catch (error) {
-      if (error.isOperational) throw error;
-      throw createError.database(`Erro ao definir empresa temporária: ${error.message}`);
-    }
-  }
-
-  static async clearEmpresaTemporaria(motoristaId) {
-    try {
-      const result = await db.query(
-        "UPDATE motoristas SET empresa_id_temporario = NULL WHERE id = $1 RETURNING *",
-        [motoristaId]
-      );
-
-      if (result.rows.length === 0) {
-        throw createError.notFound("Motorista");
-      }
-
-      return result.rows[0];
-    } catch (error) {
-      if (error.isOperational) throw error;
-      throw createError.database(`Erro ao limpar empresa temporária: ${error.message}`);
-    }
-  }
-
-  static async updateDocumentosVeiculo(motoristaId, documentos) {
-    try {
-      const { antt, placa_veiculo, renavam, chassi, cnh } = documentos;
-
-      const result = await db.query(
-        `UPDATE motoristas
-         SET antt = $1,
-             placa_veiculo = $2,
-             renavam = $3,
-             chassi = $4,
-             cnh = $5
-         WHERE id = $6
-         RETURNING id, nome, antt, placa_veiculo, renavam, chassi, cnh`,
-        [antt, placa_veiculo, renavam, chassi, cnh, motoristaId]
-      );
-
-      if (result.rows.length === 0) {
-        throw createError.notFound("Motorista");
-      }
-
-      return result.rows[0];
-    } catch (error) {
-      if (error.isOperational) throw error;
-      throw createError.database(`Erro ao atualizar documentos do veículo: ${error.message}`);
-    }
-  }
-
-  static async updateTelefone(motoristaId, telefone) {
-    try {
-      const result = await db.query(
-        `UPDATE motoristas
-         SET telefone = $1
-         WHERE id = $2
-         RETURNING id, nome, telefone`,
-        [telefone, motoristaId]
-      );
-
-      if (result.rows.length === 0) {
-        throw createError.notFound("Motorista");
-      }
-
-      return result.rows[0];
-    } catch (error) {
-      if (error.isOperational) throw error;
-      throw createError.database(`Erro ao atualizar telefone: ${error.message}`);
     }
   }
 }

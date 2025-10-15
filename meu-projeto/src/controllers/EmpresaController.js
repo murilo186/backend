@@ -1,5 +1,6 @@
 const { asyncHandler } = require("../middleware/errorHandler");
 const EmpresaModel = require("../models/EmpresaModel");
+const GeocodingService = require("../services/GeocodingService");
 const Logger = require("../utils/logger");
 
 class EmpresaController {
@@ -55,6 +56,26 @@ class EmpresaController {
       estado: updateData.estado
     };
 
+    // Se tem dados de endereço, buscar coordenadas
+    if (mappedData.rua && mappedData.cidade && mappedData.estado) {
+      Logger.info("Buscando coordenadas para endereço da empresa", { empresaId: id });
+
+      const coordinates = await GeocodingService.getCoordinates({
+        rua: mappedData.rua,
+        numero: mappedData.numero,
+        bairro: mappedData.bairro,
+        cidade: mappedData.cidade,
+        estado: mappedData.estado,
+        cep: mappedData.cep
+      });
+
+      if (coordinates) {
+        mappedData.latitude = coordinates.latitude;
+        mappedData.longitude = coordinates.longitude;
+        Logger.info("Coordenadas adicionadas aos dados da empresa", coordinates);
+      }
+    }
+
     const empresa = await EmpresaModel.update(id, mappedData);
 
     Logger.info("Empresa atualizada com sucesso", {
@@ -66,6 +87,37 @@ class EmpresaController {
       success: true,
       message: "Dados da empresa atualizados com sucesso",
       empresa
+    });
+  });
+
+  // Atualizar apenas coordenadas da empresa
+  static updateCoordenadas = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { latitude, longitude } = req.body;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({
+        success: false,
+        error: "Latitude e longitude são obrigatórias"
+      });
+    }
+
+    Logger.info("Atualizando coordenadas da empresa", {
+      empresaId: id,
+      latitude,
+      longitude
+    });
+
+    await db.query(
+      'UPDATE empresas SET latitude = $1, longitude = $2 WHERE id = $3',
+      [latitude, longitude, id]
+    );
+
+    Logger.info("Coordenadas da empresa atualizadas", { empresaId: id });
+
+    res.json({
+      success: true,
+      message: "Coordenadas atualizadas com sucesso"
     });
   });
 

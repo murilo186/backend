@@ -67,7 +67,8 @@ class EmpresaModel {
                 is_online, last_login, created_at,
                 telefone, site, whatsapp, descricao, setor, porte,
                 data_fundacao, num_funcionarios,
-                cep, rua, numero, complemento, bairro, cidade, estado
+                cep, rua, numero, complemento, bairro, cidade, estado,
+                latitude, longitude
          FROM empresas WHERE id = $1`,
         [id]
       );
@@ -129,7 +130,9 @@ class EmpresaModel {
         complemento,
         bairro,
         cidade,
-        estado
+        estado,
+        latitude,
+        longitude
       } = updateData;
 
       const result = await db.query(
@@ -151,16 +154,20 @@ class EmpresaModel {
              bairro = $16,
              cidade = $17,
              estado = $18,
+             latitude = $19,
+             longitude = $20,
              updated_at = NOW()
          WHERE id = $1
          RETURNING id, nome_empresa, email_corporativo, cnpj, nome_administrador,
                    telefone, site, whatsapp, descricao, setor, porte,
                    data_fundacao, num_funcionarios,
-                   cep, rua, numero, complemento, bairro, cidade, estado`,
+                   cep, rua, numero, complemento, bairro, cidade, estado,
+                   latitude, longitude`,
         [
           id, nomeEmpresa, emailCorporativo, telefone, site, whatsapp,
           descricao, setor, porte, dataFundacao, numFuncionarios,
-          cep, rua, numero, complemento, bairro, cidade, estado
+          cep, rua, numero, complemento, bairro, cidade, estado,
+          latitude, longitude
         ]
       );
 
@@ -207,6 +214,32 @@ class EmpresaModel {
       };
     } catch (error) {
       throw createError.database(`Erro ao buscar estatísticas da empresa: ${error.message}`);
+    }
+  }
+
+  static async findEmpresasProximas(latitude, longitude, raioKm = 30) {
+    try {
+      const result = await db.query(
+        `SELECT
+           id,
+           nome_empresa,
+           telefone,
+           cidade,
+           estado,
+           latitude,
+           longitude,
+           calcular_distancia_km($1, $2, latitude, longitude) as distancia_km
+         FROM empresas
+         WHERE latitude IS NOT NULL
+           AND longitude IS NOT NULL
+           AND calcular_distancia_km($1, $2, latitude, longitude) <= $3
+         ORDER BY distancia_km ASC`,
+        [latitude, longitude, raioKm]
+      );
+
+      return result.rows;
+    } catch (error) {
+      throw createError.database(`Erro ao buscar empresas próximas: ${error.message}`);
     }
   }
 }

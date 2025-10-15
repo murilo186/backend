@@ -8,26 +8,18 @@ const db = require("../config/database");
 
 class FreteService {
   static async createFrete(data) {
-    console.log("🔥 DEBUG createFrete - DADOS RECEBIDOS:", JSON.stringify(data, null, 2));
-
     const {
       empresaId,
       origem,
       destino,
       distancia,
       valor,
-      valorEmpresa,
       tipoCarga,
       peso,
       eixosRequeridos,
       observacoes,
-      disponivelTerceiros,
-      dataColeta,
-      dataEntregaPrevista
+      disponivelTerceiros
     } = data;
-
-    console.log("🔥 DEBUG createFrete - VALOR:", valor);
-    console.log("🔥 DEBUG createFrete - VALOR_EMPRESA:", valorEmpresa);
 
     // Validação de campos obrigatórios
     const validation = validateRequiredFields(
@@ -42,16 +34,6 @@ class FreteService {
     const valorValidation = validateNumeric(valor, 0.01);
     if (!valorValidation.isValid) {
       throw createError.validation(`Valor inválido: ${valorValidation.message}`, "valor");
-    }
-
-    // Validação de valorEmpresa (se fornecido)
-    let valorEmpresaValidated = null;
-    if (valorEmpresa) {
-      const valorEmpresaValidation = validateNumeric(valorEmpresa, 0.01);
-      if (!valorEmpresaValidation.isValid) {
-        throw createError.validation(`Valor da empresa inválido: ${valorEmpresaValidation.message}`, "valorEmpresa");
-      }
-      valorEmpresaValidated = valorEmpresaValidation.value;
     }
 
     // Validação de peso (se fornecido)
@@ -76,17 +58,12 @@ class FreteService {
       destino: destino.trim(),
       distancia,
       valor: valorValidation.value,
-      valorEmpresa: valorEmpresaValidated,
       tipoCarga: tipoCarga.trim(),
       peso,
       eixosRequeridos: eixosRequeridos || 3,
-      dataColeta: dataColeta || null,
-      dataEntregaPrevista: dataEntregaPrevista || null,
       observacoes: observacoes?.trim() || null,
       disponivelTerceiros: disponivelTerceiros || false
     };
-
-    console.log("🔥 DEBUG createFrete - FRETE_DATA QUE VAI PRO MODEL:", JSON.stringify(freteData, null, 2));
 
     const frete = await FreteModel.create(freteData);
 
@@ -130,7 +107,7 @@ class FreteService {
 
   static async updateFrete(freteId, empresaId, updateData) {
     // Validar dados de entrada similares ao create
-    const { origem, destino, valor, valorEmpresa, disponivelTerceiros } = updateData;
+    const { origem, destino, valor, disponivelTerceiros } = updateData;
 
     if (origem) updateData.origem = origem.trim();
     if (destino) updateData.destino = destino.trim();
@@ -141,14 +118,6 @@ class FreteService {
         throw createError.validation(`Valor inválido: ${valorValidation.message}`);
       }
       updateData.valor = valorValidation.value;
-    }
-
-    if (valorEmpresa) {
-      const valorEmpresaValidation = validateNumeric(valorEmpresa, 0.01);
-      if (!valorEmpresaValidation.isValid) {
-        throw createError.validation(`Valor da empresa inválido: ${valorEmpresaValidation.message}`);
-      }
-      updateData.valorEmpresa = valorEmpresaValidation.value;
     }
 
     // Garantir que disponivelTerceiros seja um boolean
@@ -174,7 +143,6 @@ class FreteService {
   }
 
   static async offerFreteToMotorista(freteId, motoristaId, empresaId) {
-    console.log("🔍 DEBUG offerFreteToMotorista:", { freteId, motoristaId, empresaId });
     // Verificar se frete existe e está pendente
     const frete = await FreteModel.findById(freteId);
 
@@ -193,27 +161,14 @@ class FreteService {
     // Verificar se motorista existe e está disponível
     const motorista = await MotoristaModel.findById(motoristaId);
 
-    console.log("🔍 DEBUG - Motorista encontrado:", { id: motorista?.id, nome: motorista?.nome, empresa_id: motorista?.empresa_id, status_disponibilidade: motorista?.status_disponibilidade, ativo: motorista?.ativo });
     if (!motorista) {
       throw createError.notFound("Motorista");
     }
 
     // Permitir motoristas da própria empresa OU terceirizados (empresa_id = null)
-    // Verificar se motorista pode receber a oferta
-    const motoristaEmpresaId = motorista.empresa_id;
-    const empresaIdInt = parseInt(empresaId);
-    
-    // Motorista pode receber oferta se:
-    // 1. É terceirizado (empresa_id = null)
-    // 2. Pertence à empresa que está oferecendo o frete
-    const podeReceberOferta = motoristaEmpresaId === null || motoristaEmpresaId === empresaIdInt;
-    
-    if (!podeReceberOferta) {
-      console.log("❌ DEBUG - Motorista rejeitado:", { motoristaEmpresaId, empresaIdInt, podeReceberOferta });
-      throw createError.forbidden("Motorista não pode receber ofertas desta empresa");
+    if (motorista.empresa_id !== null && motorista.empresa_id !== parseInt(empresaId)) {
+      throw createError.forbidden("Motorista não pertence à sua empresa");
     }
-    
-    console.log("✅ DEBUG - Motorista aprovado:", { motoristaEmpresaId, empresaIdInt, podeReceberOferta });
 
     if (motorista.status_disponibilidade !== "livre" || !motorista.ativo) {
       throw createError.validation("Motorista não está disponível");
@@ -316,14 +271,6 @@ class FreteService {
       if (frete.motorista_id) {
         await MotoristaModel.updateStatus(frete.motorista_id, "livre");
         await MotoristaModel.incrementFretesConcluidos(frete.motorista_id);
-
-        // Limpar empresa temporária (para motoristas terceirizados)
-        await MotoristaModel.clearEmpresaTemporaria(frete.motorista_id);
-
-        Logger.info("✅ Motorista liberado e empresa temporária removida", {
-          motoristaId: frete.motorista_id,
-          freteId
-        });
       }
 
       Logger.info("Frete finalizado", { freteId, empresaId, finalizadoPor });

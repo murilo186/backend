@@ -10,16 +10,20 @@ class FreteModel {
         destino,
         distancia,
         valor,
+        valorEmpresa,
         tipoCarga,
         peso,
         eixosRequeridos,
-        observacoes
+        observacoes,
+        disponivelTerceiros,
+        dataColeta,
+        dataEntregaPrevista
       } = freteData;
 
       const result = await db.query(
         `INSERT INTO fretes
-         (empresa_id, origem, destino, distancia, valor, tipo_carga, peso, eixos_requeridos, observacoes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (empresa_id, origem, destino, distancia, valor, valor_empresa, tipo_carga, peso, eixos_requeridos, observacoes, disponivel_terceiros, data_coleta, data_entrega_prevista)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`,
         [
           empresaId,
@@ -27,10 +31,14 @@ class FreteModel {
           destino,
           distancia || null,
           valor,
+          valorEmpresa || null,
           tipoCarga,
           peso || null,
           eixosRequeridos || 3,
-          observacoes || null
+          observacoes || null,
+          disponivelTerceiros || false,
+          dataColeta || null,
+          dataEntregaPrevista || null
         ]
       );
 
@@ -58,7 +66,18 @@ class FreteModel {
 
       query += ` ORDER BY f.created_at DESC`;
 
+      console.log("🔧 DEBUG findByEmpresa - query:", query);
+      console.log("🔧 DEBUG findByEmpresa - params:", params);
+
       const result = await db.query(query, params);
+
+      console.log("🔧 DEBUG findByEmpresa - resultado:", result.rows.map(row => ({
+        id: row.id,
+        origem: row.origem,
+        destino: row.destino,
+        disponivel_terceiros: row.disponivel_terceiros
+      })));
+
       return result.rows;
     } catch (error) {
       throw createError.database(`Erro ao buscar fretes da empresa: ${error.message}`);
@@ -90,41 +109,77 @@ class FreteModel {
         destino,
         distancia,
         valor,
+        valorEmpresa,
         tipoCarga,
         peso,
         eixosRequeridos,
-        observacoes
+        observacoes,
+        disponivelTerceiros
       } = updateData;
+
+      console.log("🔧 DEBUG FreteModel.update - parâmetros recebidos:", {
+        freteId,
+        empresaId,
+        updateData,
+        origem,
+        destino,
+        distancia,
+        valor,
+        valorEmpresa,
+        tipoCarga,
+        peso,
+        eixosRequeridos,
+        observacoes,
+        disponivelTerceiros
+      });
+
+      const params = [
+        origem,
+        destino,
+        distancia || null,
+        valor,
+        valorEmpresa || null,
+        tipoCarga,
+        peso || null,
+        eixosRequeridos || 3,
+        observacoes || null,
+        disponivelTerceiros !== undefined ? Boolean(disponivelTerceiros) : false,
+        parseInt(freteId),
+        parseInt(empresaId)
+      ];
+
+      console.log("🔧 DEBUG FreteModel.update - parâmetros da query:", params);
 
       const result = await db.query(
         `UPDATE fretes
-         SET origem = $1, destino = $2, distancia = $3, valor = $4,
-             tipo_carga = $5, peso = $6, eixos_requeridos = $7, observacoes = $8,
-             updated_at = NOW()
-         WHERE id = $9 AND empresa_id = $10 AND status_frete = 'pendente'
+         SET origem = $1, destino = $2, distancia = $3, valor = $4, valor_empresa = $5,
+             tipo_carga = $6, peso = $7, eixos_requeridos = $8, observacoes = $9,
+             disponivel_terceiros = $10, updated_at = NOW()
+         WHERE id = $11 AND empresa_id = $12 AND status_frete = 'pendente'
          RETURNING *`,
-        [
-          origem,
-          destino,
-          distancia,
-          valor,
-          tipoCarga,
-          peso,
-          eixosRequeridos || 3,
-          observacoes,
-          freteId,
-          empresaId
-        ]
+        params
       );
 
       if (result.rows.length === 0) {
         throw createError.notFound("Frete não encontrado ou não pode ser editado");
       }
 
+      console.log("✅ DEBUG FreteModel.update - query executada com sucesso");
       return result.rows[0];
     } catch (error) {
+      console.error("❌ DEBUG FreteModel.update - erro na query:", {
+        errorMessage: error.message,
+        errorCode: error.code,
+        errorDetail: error.detail,
+        errorConstraint: error.constraint,
+        errorColumn: error.column,
+        errorTable: error.table,
+        errorSchema: error.schema,
+        fullError: error
+      });
+
       if (error.isOperational) throw error;
-      throw createError.database(`Erro ao atualizar frete: ${error.message}`);
+      throw createError.database(`Erro ao atualizar frete: ${error.message} | Code: ${error.code}`);
     }
   }
 
@@ -290,6 +345,27 @@ class FreteModel {
       return result.rows;
     } catch (error) {
       throw createError.database(`Erro ao buscar histórico de fretes: ${error.message}`);
+    }
+  }
+
+  // Buscar fretes disponíveis para terceiros (motoristas avulsos)
+  static async getFretesTerceirizados() {
+    try {
+      const result = await db.query(
+        `SELECT f.*, e.nome_empresa, e.telefone as empresa_telefone,
+                e.email_corporativo as empresa_email
+         FROM fretes f
+         JOIN empresas e ON f.empresa_id = e.id
+         WHERE f.disponivel_terceiros = true
+           AND f.status_frete = 'pendente'
+           AND f.motorista_id IS NULL
+         ORDER BY f.created_at DESC`,
+        []
+      );
+
+      return result.rows;
+    } catch (error) {
+      throw createError.database(`Erro ao buscar fretes terceirizados: ${error.message}`);
     }
   }
 }
