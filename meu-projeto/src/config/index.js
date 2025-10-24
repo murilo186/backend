@@ -25,10 +25,32 @@ const config = {
   },
 
   cors: {
-    origin: process.env.CORS_ORIGIN?.split(",") || "*",
-    credentials: process.env.CORS_CREDENTIALS === "true" || true,
+    origin: function (origin, callback) {
+      // Permitir requisições sem origin (como apps mobile, Postman, etc)
+      if (!origin) return callback(null, true);
+
+      // Lista de origens permitidas
+      const allowedOrigins = process.env.CORS_ORIGIN
+        ? process.env.CORS_ORIGIN.split(",").map(o => o.trim())
+        : [
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "https://nalm-go-frontend.onrender.com"
+          ];
+
+      // Verificar se a origem está na lista ou se é um padrão permitido
+      if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+        callback(null, true);
+      } else {
+        console.warn(`CORS blocked origin: ${origin}`);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-requested-with"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-requested-with", "Accept"],
+    exposedHeaders: ["Content-Range", "X-Content-Range"],
+    maxAge: 600, // Cache preflight por 10 minutos
   },
 
   uploads: {
